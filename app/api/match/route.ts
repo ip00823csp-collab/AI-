@@ -37,20 +37,27 @@ const responseSchema = {
 };
 
 export async function POST(req: NextRequest) {
+  console.log("[/api/match] 收到请求");
+
   let body: MatchBody;
   try {
     body = await req.json();
   } catch {
+    console.error("[/api/match] 请求体不是合法 JSON");
     return NextResponse.json({ error: "请求体不是合法 JSON" }, { status: 400 });
   }
 
   const { jd, resumeText } = body;
   if (!jd || typeof jd !== "string") {
+    console.error("[/api/match] jd 字段必填");
     return NextResponse.json({ error: "jd 字段必填" }, { status: 400 });
   }
   if (!resumeText || typeof resumeText !== "string") {
+    console.error("[/api/match] resumeText 字段必填");
     return NextResponse.json({ error: "resumeText 字段必填" }, { status: 400 });
   }
+
+  console.log(`[/api/match] 开始处理 JD 匹配，JD 长度: ${jd.length}，简历长度: ${resumeText.length}`);
 
   const systemPrompt =
     "你是资深技术招聘官，擅长评估候选人简历与岗位描述的匹配度。请基于简历文本与 JD 严格匹配，输出 JSON。\n" +
@@ -72,9 +79,11 @@ export async function POST(req: NextRequest) {
       { temperature: 0.2, responseFormat: "json_object", maxTokens: 1500 }
     );
     const parsed = parseJsonResponse(raw);
+    console.log("[/api/match] 处理成功");
     return NextResponse.json(parsed);
   } catch (err) {
     const message = err instanceof Error ? err.message : "未知错误";
+    console.error("[/api/match] 处理失败:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -10,17 +10,23 @@ interface PolishBody {
 }
 
 export async function POST(req: NextRequest) {
+  console.log("[/api/polish] 收到请求");
+
   let body: PolishBody;
   try {
     body = await req.json();
   } catch {
+    console.error("[/api/polish] 请求体不是合法 JSON");
     return NextResponse.json({ error: "请求体不是合法 JSON" }, { status: 400 });
   }
 
   const { text, section = "full", context } = body;
   if (!text || typeof text !== "string") {
+    console.error("[/api/polish] text 字段必填");
     return NextResponse.json({ error: "text 字段必填" }, { status: 400 });
   }
+
+  console.log(`[/api/polish] 开始润色，长度: ${text.length}`);
 
   const systemPrompt =
     "你是一位资深中文简历优化专家。根据用户提供的简历内容，输出更专业、更量化、更具竞争力的中文重写版本。要求：\n" +
@@ -54,9 +60,11 @@ export async function POST(req: NextRequest) {
       { temperature: 0.5, responseFormat: "json_object", maxTokens: 2400 }
     );
     const parsed = parseJsonResponse<{ rewritten: string; reason: string }>(raw);
+    console.log("[/api/polish] 润色成功");
     return NextResponse.json(parsed);
   } catch (err) {
     const message = err instanceof Error ? err.message : "未知错误";
+    console.error("[/api/polish] 润色失败:", message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
