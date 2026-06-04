@@ -18,7 +18,7 @@ export async function chat(messages: ChatMessage[], options: ChatOptions = {}) {
     throw new Error("GLM_API_KEY 环境变量未设置");
   }
 
-  const model = options.model ?? process.env.GLM_MODEL ?? "glm-4.6";
+  const model = options.model ?? process.env.GLM_MODEL ?? "glm-4.7-flash";
 
   const body: Record<string, unknown> = {
     model,
