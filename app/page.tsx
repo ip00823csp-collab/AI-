@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, type ReactNode, useState } from "react";
+import { ChangeEvent, DragEvent, type ReactNode, useState } from "react";
 import {
   MAX_RESUME_FILE_SIZE,
   RESUME_FILE_ACCEPT,
@@ -107,6 +107,7 @@ export default function Home() {
   const [activeResult, setActiveResult] = useState<ResultType>(null);
   const [loading, setLoading] = useState<"" | "polish" | "match">("");
   const [uploading, setUploading] = useState(false);
+  const [isDragActive, setIsDragActive] = useState(false);
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,14 +125,12 @@ export default function Home() {
     resetResults();
   };
 
-  const handleResumeFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-
+  const uploadResumeFile = async (file: File | null) => {
     if (!file) {
       return;
     }
 
+    setIsDragActive(false);
     setUploading(true);
     setError(null);
     setUploadSummary(null);
@@ -163,6 +162,43 @@ export default function Home() {
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleResumeFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    await uploadResumeFile(file);
+  };
+
+  const handleUploadDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+
+    if (loading !== "" || uploading) {
+      return;
+    }
+
+    setIsDragActive(true);
+  };
+
+  const handleUploadDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      return;
+    }
+
+    setIsDragActive(false);
+  };
+
+  const handleUploadDrop = async (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+
+    if (loading !== "" || uploading) {
+      return;
+    }
+
+    const file = event.dataTransfer.files?.[0] ?? null;
+    await uploadResumeFile(file);
   };
 
   const callPolish = async () => {
@@ -378,8 +414,30 @@ export default function Home() {
                         disabled={loading !== "" || uploading}
                         className="sr-only"
                       />
-                      {uploading ? "正在读取简历..." : "上传简历文件"}
+                      {uploading ? "正在读取简历..." : "选择简历文件"}
                     </label>
+                  </div>
+
+                  <div
+                    onDragOver={handleUploadDragOver}
+                    onDragEnter={handleUploadDragOver}
+                    onDragLeave={handleUploadDragLeave}
+                    onDrop={handleUploadDrop}
+                    className={`mt-4 rounded-[24px] border-2 border-dashed px-5 py-6 text-center transition ${
+                      isDragActive
+                        ? "border-[#3e617f] bg-[#e8f0f6]"
+                        : "border-[#c8d5df] bg-white/70"
+                    } ${loading !== "" || uploading ? "cursor-not-allowed opacity-70" : ""}`}
+                  >
+                    <p className="text-sm font-semibold text-[#17314a]">
+                      {uploading ? "正在解析你拖入的简历..." : "拖拽简历到这里也可以"}
+                    </p>
+                    <p className="mt-2 text-sm leading-7 text-[#607080]">
+                      支持 {RESUME_FILE_LABEL}，也可以继续点击上方按钮选择文件。
+                    </p>
+                    <p className="mt-3 text-xs text-[#8a96a2]">
+                      为了演示更顺畅，建议使用文字版 PDF 或 Word 文件。
+                    </p>
                   </div>
 
                   {uploadSummary && (
