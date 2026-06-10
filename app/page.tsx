@@ -1,6 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { ChangeEvent, useState } from "react";
+import {
+  MAX_RESUME_FILE_SIZE,
+  RESUME_FILE_ACCEPT,
+  RESUME_FILE_LABEL,
+} from "@/lib/resume-upload-config";
 
 interface PolishResult {
   rewritten: string;
@@ -14,6 +19,13 @@ interface MatchResult {
   suggestions: { section: string; advice: string }[];
 }
 
+interface UploadSummary {
+  fileName: string;
+  fileType: string;
+  warnings: string[];
+  charCount: number;
+}
+
 type ResultType = "polish" | "match" | null;
 
 export default function Home() {
@@ -23,7 +35,64 @@ export default function Home() {
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null);
   const [activeResult, setActiveResult] = useState<ResultType>(null);
   const [loading, setLoading] = useState<"" | "polish" | "match">("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const resetResults = () => {
+    setPolishResult(null);
+    setMatchResult(null);
+    setActiveResult(null);
+  };
+
+  const clearAll = () => {
+    setResume("");
+    setJd("");
+    setUploadSummary(null);
+    setError(null);
+    resetResults();
+  };
+
+  const handleResumeFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    setUploading(true);
+    setError(null);
+    setUploadSummary(null);
+    resetResults();
+
+    try {
+      const formData = new FormData();
+      formData.set("file", file);
+
+      const response = await fetch("/api/parse-resume", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json.error || "文件解析失败");
+      }
+
+      setResume(json.text);
+      setUploadSummary({
+        fileName: json.fileName,
+        fileType: String(json.fileType).toUpperCase(),
+        warnings: Array.isArray(json.warnings) ? json.warnings : [],
+        charCount: typeof json.text === "string" ? json.text.length : 0,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "文件解析失败");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const callPolish = async () => {
     if (!resume.trim()) {
@@ -33,7 +102,7 @@ export default function Home() {
     }
     setLoading("polish");
     setError(null);
-    setPolishResult(null);
+    resetResults();
     setActiveResult("polish");
     try {
       const res = await fetch("/api/polish", {
@@ -60,7 +129,7 @@ export default function Home() {
     }
     setLoading("match");
     setError(null);
-    setMatchResult(null);
+    resetResults();
     setActiveResult("match");
     try {
       const res = await fetch("/api/match", {
@@ -85,11 +154,46 @@ export default function Home() {
         <header className="mb-6">
           <h1 className="text-3xl font-bold text-zinc-900">AI 简历助手</h1>
           <p className="text-sm text-zinc-500 mt-1">
-            粘贴简历 → 一键润色 · 粘贴 JD → 匹配评分
+            上传简历或直接粘贴 → 一键润色 · 粘贴 JD → 匹配评分
           </p>
         </header>
 
         <section className="bg-white border border-zinc-200 rounded-lg p-5 mb-4 shadow-sm">
+          <div className="mb-4 rounded-lg border border-dashed border-blue-200 bg-blue-50/70 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-medium text-zinc-800">
+                  先上传简历文件，或者继续手动粘贴文字
+                </p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  支持 {RESUME_FILE_LABEL}，建议 {formatMegabytes(MAX_RESUME_FILE_SIZE)} 以内。
+                  PDF 扫描件如果没有可选中文本，解析效果会比较有限。
+                </p>
+              </div>
+              <label className="inline-flex items-center justify-center gap-2 rounded-md border border-blue-200 bg-white px-4 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100 cursor-pointer">
+                <input
+                  type="file"
+                  accept={RESUME_FILE_ACCEPT}
+                  onChange={handleResumeFileUpload}
+                  disabled={loading !== "" || uploading}
+                  className="sr-only"
+                />
+                {uploading ? "正在解析文件…" : "上传 PDF / Word"}
+              </label>
+            </div>
+            {uploadSummary && (
+              <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                已导入 {uploadSummary.fileName} · {uploadSummary.fileType} · 提取
+                {uploadSummary.charCount} 字
+                {uploadSummary.warnings.length > 0 && (
+                  <div className="mt-2 text-amber-700">
+                    解析提示：{uploadSummary.warnings.join("；")}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <label className="block text-sm font-medium text-zinc-700 mb-2">
             简历内容
           </label>
@@ -97,11 +201,12 @@ export default function Home() {
             value={resume}
             onChange={(e) => setResume(e.target.value)}
             rows={10}
-            placeholder="把你的简历全文粘贴到这里…&#10;&#10;例如：&#10;张三&#10;求职岗位：前端工程师&#10;3 年 React 开发经验…&#10;工作经历：&#10;- 负责公司后台系统重构…"
+            placeholder="把你的简历全文粘贴到这里，或者先上传 PDF / Word 文件…&#10;&#10;例如：&#10;张三&#10;求职岗位：前端工程师&#10;3 年 React 开发经验…&#10;工作经历：&#10;- 负责公司后台系统重构…"
             className="w-full px-3 py-2 text-sm border border-zinc-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
           />
           <div className="flex justify-between items-center mt-2">
             <span className="text-xs text-zinc-400">{resume.length} 字</span>
+            <span className="text-xs text-zinc-400">支持上传后自动回填文本框</span>
           </div>
         </section>
 
@@ -121,28 +226,21 @@ export default function Home() {
         <section className="flex flex-wrap gap-3 mb-6">
           <button
             onClick={callPolish}
-            disabled={loading !== ""}
+            disabled={loading !== "" || uploading}
             className="px-5 py-2.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading === "polish" ? "✨ AI 润色中…" : "✨ AI 润色"}
           </button>
           <button
             onClick={callMatch}
-            disabled={loading !== ""}
+            disabled={loading !== "" || uploading}
             className="px-5 py-2.5 text-sm bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading === "match" ? "🎯 JD 匹配中…" : "🎯 JD 匹配"}
           </button>
           <button
-            onClick={() => {
-              setResume("");
-              setJd("");
-              setPolishResult(null);
-              setMatchResult(null);
-              setError(null);
-              setActiveResult(null);
-            }}
-            disabled={loading !== ""}
+            onClick={clearAll}
+            disabled={loading !== "" || uploading}
             className="px-5 py-2.5 text-sm bg-white border border-zinc-300 text-zinc-700 rounded-md hover:bg-zinc-50 disabled:opacity-50"
           >
             清空
@@ -284,4 +382,8 @@ function KeywordGroup({
       </div>
     </div>
   );
+}
+
+function formatMegabytes(bytes: number) {
+  return `${Math.round((bytes / 1024 / 1024) * 10) / 10}MB`;
 }
