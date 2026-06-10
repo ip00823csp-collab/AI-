@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f4f5;
-  --foreground: #18181b;
+  --background: #f3ede4;
+  --foreground: #142537;
 }
 
 @theme inline {
@@ -11,7 +11,10 @@
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at top left, rgba(217, 194, 153, 0.2), transparent 28%),
+    radial-gradient(circle at top right, rgba(142, 170, 189, 0.18), transparent 24%),
+    linear-gradient(180deg, #f7f2ea 0%, #f2ebe2 48%, #f6f3ed 100%);
   color: var(--foreground);
   font-family:
     "PingFang SC",
@@ -21,6 +24,47 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
+}
+
+.paper-grid {
+  background-image:
+    linear-gradient(rgba(19, 38, 59, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(19, 38, 59, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.45), transparent);
+}
+
+.fade-up {
+  animation: fadeUp 0.8s ease-out both;
+}
+
+.fade-up-delay {
+  animation: fadeUp 0.95s ease-out both;
+}
+
+.drift-slow {
+  animation: drift 16s ease-in-out infinite;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(10px, -14px, 0);
+  }
 }
 
 @media print {

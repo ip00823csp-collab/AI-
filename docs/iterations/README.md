@@ -17,3 +17,4 @@
 
 - [2026-06-10-sufe-ai-resume-v1](./2026-06-10-sufe-ai-resume-v1/)
 - [2026-06-10-upload-parser-v1](./2026-06-10-upload-parser-v1/)
+- [2026-06-10-product-refresh-v1](./2026-06-10-product-refresh-v1/)

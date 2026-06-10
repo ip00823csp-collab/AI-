@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { chat, parseJsonResponse } from "@/lib/llm";
+import { chat, getUserFacingLlmError, parseJsonResponse } from "@/lib/llm";
 
 export const runtime = "nodejs";
 
@@ -82,8 +82,12 @@ export async function POST(req: NextRequest) {
     console.log("[/api/match] 处理成功");
     return NextResponse.json(parsed);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "未知错误";
-    console.error("[/api/match] 处理失败:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const rawMessage = err instanceof Error ? err.message : "未知错误";
+    const friendlyError = getUserFacingLlmError(err);
+    console.error("[/api/match] 处理失败:", rawMessage);
+    return NextResponse.json(
+      { error: friendlyError.message },
+      { status: friendlyError.status }
+    );
   }
 }
