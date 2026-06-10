@@ -21,3 +21,4 @@
 - [2026-06-10-drag-upload-v1](./2026-06-10-drag-upload-v1/)
 - [2026-06-10-demo-stability-v1](./2026-06-10-demo-stability-v1/)
 - [2026-06-10-polish-apply-fix-v1](./2026-06-10-polish-apply-fix-v1/)
+- [2026-06-10-track-version-v1](./2026-06-10-track-version-v1/)

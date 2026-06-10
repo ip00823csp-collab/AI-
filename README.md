@@ -8,6 +8,7 @@
   - 粘贴简历全文并调用 AI 润色
   - 粘贴 JD 输出匹配分数、命中关键词和修改建议
   - 支持上传 PDF / DOC / DOCX 简历并自动抽取文本
+  - 支持按财经求职赛道生成岗位版本包
   - 中文界面与 Next.js 16 / React 19 基础工程
 - 仓库中已有待接入能力：
   - 结构化简历表单组件
@@ -23,6 +24,7 @@
 - [产品 PRD](./docs/iterations/2026-06-10-sufe-ai-resume-v1/product-prd.md)
 - [文件上传迭代说明](./docs/iterations/2026-06-10-upload-parser-v1/README.md)
 - [演示稳定性修复说明](./docs/iterations/2026-06-10-demo-stability-v1/README.md)
+- [赛道版本迭代说明](./docs/iterations/2026-06-10-track-version-v1/README.md)
 - [迭代归档说明](./docs/iterations/README.md)
 
 ## 快速开始
@@ -47,6 +49,7 @@ npm run dev
 - 直接粘贴简历文本
 - 上传 `PDF / DOC / DOCX` 自动抽取文本
 - 基于文本执行 AI 润色和 JD 匹配
+- 基于财经赛道生成岗位版本摘要、证据映射和改写建议
 
 ## 技术栈
 

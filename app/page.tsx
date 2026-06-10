@@ -8,6 +8,11 @@ import {
   useState,
 } from "react";
 import {
+  TRACK_OPTIONS,
+  TRACK_PLAYBOOKS,
+  type TrackKey,
+} from "@/lib/track-playbooks";
+import {
   MAX_RESUME_FILE_SIZE,
   RESUME_FILE_ACCEPT,
   RESUME_FILE_LABEL,
@@ -32,7 +37,20 @@ interface UploadSummary {
   charCount: number;
 }
 
-type ResultType = "polish" | "match" | null;
+interface TrackVersionResult {
+  positioning: string;
+  recruiterLens: string[];
+  keywordsToEmphasize: string[];
+  evidenceMap: { sourceFact: string; whyItMatters: string }[];
+  rewritePack: {
+    summary: string;
+    bullets: { sourceFact: string; rewritten: string; purpose: string }[];
+  };
+  gapRisks: string[];
+  nextActions: string[];
+}
+
+type ResultType = "polish" | "match" | "track" | null;
 
 const DISPLAY_FONT = '"Iowan Old Style", "Songti SC", "STSong", serif';
 
@@ -110,18 +128,23 @@ export default function Home() {
   const [jd, setJd] = useState("");
   const [polishResult, setPolishResult] = useState<PolishResult | null>(null);
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null);
+  const [trackVersionResult, setTrackVersionResult] = useState<TrackVersionResult | null>(null);
   const [activeResult, setActiveResult] = useState<ResultType>(null);
-  const [loading, setLoading] = useState<"" | "polish" | "match">("");
+  const [loading, setLoading] = useState<"" | "polish" | "match" | "track">("");
   const [uploading, setUploading] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
   const [resumeUpdateNotice, setResumeUpdateNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedTrackKey, setSelectedTrackKey] =
+    useState<TrackKey>("finance_analysis");
   const resumeTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const selectedTrack = TRACK_PLAYBOOKS[selectedTrackKey];
 
   const resetResults = () => {
     setPolishResult(null);
     setMatchResult(null);
+    setTrackVersionResult(null);
     setActiveResult(null);
   };
 
@@ -279,6 +302,44 @@ export default function Home() {
     }
   };
 
+  const callTrackVersion = async () => {
+    if (!resume.trim()) {
+      setError("先放入你的简历内容，再生成赛道版本。");
+      setActiveResult(null);
+      return;
+    }
+
+    setLoading("track");
+    setError(null);
+    setResumeUpdateNotice(null);
+    resetResults();
+    setActiveResult("track");
+
+    try {
+      const res = await fetch("/api/track-version", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resumeText: resume,
+          trackKey: selectedTrackKey,
+          jd,
+        }),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json.error || "赛道版本生成失败");
+      }
+
+      setTrackVersionResult(json);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "未知错误");
+      setActiveResult(null);
+    } finally {
+      setLoading("");
+    }
+  };
+
   const applyPolishResult = () => {
     if (!polishResult) {
       return;
@@ -286,6 +347,36 @@ export default function Home() {
 
     setResume(polishResult.rewritten);
     setResumeUpdateNotice("已用建议稿替换上方简历内容");
+
+    requestAnimationFrame(() => {
+      resumeTextareaRef.current?.focus();
+      resumeTextareaRef.current?.setSelectionRange(0, 0);
+      resumeTextareaRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  };
+
+  const applyTrackVersionPack = () => {
+    if (!trackVersionResult) {
+      return;
+    }
+
+    const baseResume = removeTrackVersionPrefix(resume);
+    const summaryBlock = [
+      `【赛道定位建议｜${selectedTrack.label}】`,
+      `定位摘要：${trackVersionResult.rewritePack.summary}`,
+      "重点表达：",
+      ...trackVersionResult.rewritePack.bullets.map(
+        (bullet) => `- ${bullet.rewritten}`
+      ),
+      "【原始简历正文】",
+      baseResume,
+    ].join("\n");
+
+    setResume(summaryBlock);
+    setResumeUpdateNotice(`已将 ${selectedTrack.shortLabel} 版本插入上方简历开头`);
 
     requestAnimationFrame(() => {
       resumeTextareaRef.current?.focus();
@@ -500,6 +591,62 @@ export default function Home() {
                 </div>
               </div>
 
+              <div className="mt-6 rounded-[24px] border border-[#d8dfd6] bg-[#f8fbf7] p-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[#1d4c38]">目标赛道版本</p>
+                    <p className="mt-2 max-w-2xl text-sm leading-7 text-[#5d7163]">
+                      这里不是通用润色，而是把同一份原始经历翻译成更像
+                      {selectedTrack.label}
+                      愿意继续往下看的表达方式。
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1.5 text-xs text-[#4f6757]">
+                    核心竞争力：岗位化翻译而不是泛化改写
+                  </span>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {TRACK_OPTIONS.map((track) => {
+                    const isActive = track.key === selectedTrackKey;
+
+                    return (
+                      <button
+                        key={track.key}
+                        type="button"
+                        onClick={() => setSelectedTrackKey(track.key)}
+                        disabled={loading !== "" || uploading}
+                        className={`rounded-full border px-4 py-2 text-sm transition ${
+                          isActive
+                            ? "border-[#1f6a54] bg-[#1f6a54] text-white"
+                            : "border-[#c7d7ce] bg-white text-[#416052] hover:border-[#98b4a5]"
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                      >
+                        {track.shortLabel}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                  <InfoCard
+                    title="赛道说明"
+                    body={selectedTrack.description}
+                    tone="green"
+                  />
+                  <InfoCard
+                    title="招聘方先看"
+                    items={selectedTrack.recruiterFocus}
+                    tone="navy"
+                  />
+                  <InfoCard
+                    title="建议强调"
+                    items={selectedTrack.emphasisKeywords}
+                    tone="gold"
+                  />
+                </div>
+              </div>
+
               <div className="mt-6 grid gap-5 lg:grid-cols-2">
                 <div>
                   <label className="mb-3 block text-sm font-semibold text-[#213549]">
@@ -562,6 +709,15 @@ export default function Home() {
                   className="rounded-full bg-[#1f6a54] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#2a7b62] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {loading === "match" ? "正在检查岗位贴合度..." : "检查岗位贴合度"}
+                </button>
+                <button
+                  onClick={callTrackVersion}
+                  disabled={loading !== "" || uploading}
+                  className="rounded-full bg-[#7a5b2f] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#8a6a3a] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loading === "track"
+                    ? "正在生成赛道版本..."
+                    : `生成 ${selectedTrack.shortLabel} 版本`}
                 </button>
                 <button
                   onClick={clearAll}
@@ -692,6 +848,115 @@ export default function Home() {
                   </ResultPanel>
                 )}
 
+                {activeResult === "track" && trackVersionResult && (
+                  <ResultPanel title={`${selectedTrack.label}版本`}>
+                    <div className="space-y-5">
+                      <div className="grid gap-4 lg:grid-cols-[0.86fr_1.14fr]">
+                        <div className="rounded-[26px] bg-[#17314a] p-6 text-white shadow-[0_18px_42px_rgba(23,49,74,0.22)]">
+                          <p className="text-xs uppercase tracking-[0.24em] text-[#cddae3]">
+                            这条赛道下，你更应该被怎么理解
+                          </p>
+                          <p className="mt-4 text-lg leading-8 text-[#f7efe2]">
+                            {trackVersionResult.positioning}
+                          </p>
+                          <div className="mt-5 flex flex-wrap gap-2">
+                            {trackVersionResult.keywordsToEmphasize.map((keyword) => (
+                              <span
+                                key={keyword}
+                                className="rounded-full border border-white/15 bg-white/8 px-3 py-1.5 text-xs text-white"
+                              >
+                                {keyword}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <InfoCard
+                            title="招聘方会先追问"
+                            items={trackVersionResult.recruiterLens}
+                            tone="navy"
+                          />
+                          <InfoCard
+                            title="现有证据怎么用"
+                            items={trackVersionResult.evidenceMap.map(
+                              (item) => `${item.sourceFact}：${item.whyItMatters}`
+                            )}
+                            tone="green"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 lg:grid-cols-[1.05fr_0.95fr]">
+                        <div className="rounded-[24px] border border-[#dde3ea] bg-[#fafcfd] p-5">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs uppercase tracking-[0.22em] text-[#7f8d9a]">
+                                可直接放进简历
+                              </p>
+                              <p className="mt-2 text-sm leading-7 text-[#5f6f80]">
+                                这不是泛用摘要，而是更贴 {selectedTrack.shortLabel}
+                                方向的定位表达。
+                              </p>
+                            </div>
+                            <button
+                              onClick={applyTrackVersionPack}
+                              className="rounded-full bg-[#17314a] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#21415f]"
+                            >
+                              插入上方简历开头
+                            </button>
+                          </div>
+
+                          <div className="mt-4 rounded-[20px] border border-[#dbe2e9] bg-white p-4">
+                            <p className="text-sm font-semibold text-[#213549]">定位摘要</p>
+                            <p className="mt-3 text-sm leading-7 text-[#3f5061]">
+                              {trackVersionResult.rewritePack.summary}
+                            </p>
+                          </div>
+
+                          <div className="mt-4 space-y-3">
+                            {trackVersionResult.rewritePack.bullets.map((bullet, index) => (
+                              <div
+                                key={`${bullet.sourceFact}-${index}`}
+                                className="rounded-[20px] border border-[#e2e7ec] bg-white p-4"
+                              >
+                                <p className="text-xs uppercase tracking-[0.18em] text-[#90a0ad]">
+                                  原始事实
+                                </p>
+                                <p className="mt-2 text-sm leading-7 text-[#677788]">
+                                  {bullet.sourceFact}
+                                </p>
+                                <p className="mt-4 text-xs uppercase tracking-[0.18em] text-[#8b6d42]">
+                                  赛道版改写
+                                </p>
+                                <p className="mt-2 text-sm leading-7 text-[#2f4358]">
+                                  {bullet.rewritten}
+                                </p>
+                                <p className="mt-3 text-xs leading-6 text-[#8b7555]">
+                                  这样改的原因：{bullet.purpose}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <InfoCard
+                            title="当前缺口与风险"
+                            items={trackVersionResult.gapRisks}
+                            tone="gold"
+                          />
+                          <InfoCard
+                            title="下一步最值得改"
+                            items={trackVersionResult.nextActions}
+                            tone="green"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </ResultPanel>
+                )}
+
                 {!activeResult && !error && (
                   <ResultPanel title="结果会在这里出现">
                     <div className="grid gap-4 lg:grid-cols-[0.92fr_1.08fr]">
@@ -702,7 +967,8 @@ export default function Home() {
                         <div className="mt-4 space-y-3 text-sm leading-7 text-[#5f6f80]">
                           <p>1. 一版更顺、更职业的简历表达建议。</p>
                           <p>2. 一份从岗位视角出发的贴合度反馈。</p>
-                          <p>3. 对应到具体模块的补强方向。</p>
+                          <p>3. 一套更贴财经赛道的岗位版本表达。</p>
+                          <p>4. 对应到具体模块的补强方向。</p>
                         </div>
                       </div>
 
@@ -840,6 +1106,43 @@ function PreviewRow({
   );
 }
 
+function InfoCard({
+  title,
+  body,
+  items,
+  tone,
+}: {
+  title: string;
+  body?: string;
+  items?: string[];
+  tone: "green" | "navy" | "gold";
+}) {
+  const toneMap = {
+    green: "border-[#d7e6dd] bg-[#f7fbf8] text-[#486454]",
+    navy: "border-[#d9e2ea] bg-[#f8fafc] text-[#4d6174]",
+    gold: "border-[#eadfc8] bg-[#fffaf1] text-[#7b653f]",
+  } as const;
+
+  return (
+    <div className={`rounded-[24px] border p-5 ${toneMap[tone]}`}>
+      <h3 className="text-sm font-semibold text-[#203447]">{title}</h3>
+      {body && <p className="mt-3 text-sm leading-7">{body}</p>}
+      {items && (
+        <div className="mt-3 space-y-3">
+          {items.map((item, index) => (
+            <div
+              key={`${item}-${index}`}
+              className="rounded-[16px] bg-white/75 px-3 py-2 text-sm leading-7"
+            >
+              {item}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function KeywordGroup({
   title,
   items,
@@ -877,4 +1180,8 @@ function KeywordGroup({
 
 function formatMegabytes(bytes: number) {
   return `${Math.round((bytes / 1024 / 1024) * 10) / 10}MB`;
+}
+
+function removeTrackVersionPrefix(input: string) {
+  return input.replace(/^【赛道定位建议｜[\s\S]*?【原始简历正文】\n?/, "").trimStart();
 }
