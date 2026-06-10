@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { chat, getUserFacingLlmError, parseJsonResponse } from "@/lib/llm";
+import { z } from "zod";
+import { chatJson, getUserFacingLlmError, parseJsonResponse } from "@/lib/llm";
 
 export const runtime = "nodejs";
 
@@ -8,6 +9,11 @@ interface PolishBody {
   section?: "summary" | "bullet" | "full";
   context?: string;
 }
+
+const polishResponseSchema = z.object({
+  rewritten: z.string().min(1),
+  reason: z.string().min(1),
+});
 
 export async function POST(req: NextRequest) {
   console.log("[/api/polish] 收到请求");
@@ -52,14 +58,25 @@ export async function POST(req: NextRequest) {
     `\n请输出 JSON。`;
 
   try {
-    const raw = await chat(
+    const parsed = await chatJson(
       [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      { temperature: 0.5, responseFormat: "json_object", maxTokens: 2400 }
+      (raw) => {
+        try {
+          return polishResponseSchema.parse(parseJsonResponse(raw));
+        } catch {
+          throw new Error("LLM 结构化输出校验失败");
+        }
+      },
+      {
+        temperature: 0.35,
+        responseFormat: "json_object",
+        maxTokens: 2400,
+        maxRetries: 1,
+      }
     );
-    const parsed = parseJsonResponse<{ rewritten: string; reason: string }>(raw);
     console.log("[/api/polish] 润色成功");
     return NextResponse.json(parsed);
   } catch (err) {

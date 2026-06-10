@@ -19,3 +19,4 @@
 - [2026-06-10-upload-parser-v1](./2026-06-10-upload-parser-v1/)
 - [2026-06-10-product-refresh-v1](./2026-06-10-product-refresh-v1/)
 - [2026-06-10-drag-upload-v1](./2026-06-10-drag-upload-v1/)
+- [2026-06-10-demo-stability-v1](./2026-06-10-demo-stability-v1/)

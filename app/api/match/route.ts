@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { chat, getUserFacingLlmError, parseJsonResponse } from "@/lib/llm";
+import { z } from "zod";
+import { chatJson, getUserFacingLlmError, parseJsonResponse } from "@/lib/llm";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,18 @@ const responseSchema = {
   },
 };
 
+const matchResponseSchema = z.object({
+  overallScore: z.number(),
+  matchedKeywords: z.array(z.string()),
+  missingKeywords: z.array(z.string()),
+  suggestions: z.array(
+    z.object({
+      section: z.string(),
+      advice: z.string(),
+    })
+  ),
+});
+
 export async function POST(req: NextRequest) {
   console.log("[/api/match] 收到请求");
 
@@ -71,14 +84,25 @@ export async function POST(req: NextRequest) {
     `请严格按以下 JSON Schema 输出：\n${JSON.stringify(responseSchema, null, 2)}`;
 
   try {
-    const raw = await chat(
+    const parsed = await chatJson(
       [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      { temperature: 0.2, responseFormat: "json_object", maxTokens: 1500 }
+      (raw) => {
+        try {
+          return matchResponseSchema.parse(parseJsonResponse(raw));
+        } catch {
+          throw new Error("LLM 结构化输出校验失败");
+        }
+      },
+      {
+        temperature: 0.1,
+        responseFormat: "json_object",
+        maxTokens: 1500,
+        maxRetries: 1,
+      }
     );
-    const parsed = parseJsonResponse(raw);
     console.log("[/api/match] 处理成功");
     return NextResponse.json(parsed);
   } catch (err) {

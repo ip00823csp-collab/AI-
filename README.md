@@ -22,6 +22,7 @@
 - [开源项目参考研究](./docs/iterations/2026-06-10-sufe-ai-resume-v1/open-source-benchmark.md)
 - [产品 PRD](./docs/iterations/2026-06-10-sufe-ai-resume-v1/product-prd.md)
 - [文件上传迭代说明](./docs/iterations/2026-06-10-upload-parser-v1/README.md)
+- [演示稳定性修复说明](./docs/iterations/2026-06-10-demo-stability-v1/README.md)
 - [迭代归档说明](./docs/iterations/README.md)
 
 ## 快速开始
@@ -33,6 +34,7 @@ npm install
 # 2. 配置 GLM API key
 cp .env.example .env.local
 # 编辑 .env.local 填入 GLM_API_KEY
+# 如需稳定演示，建议显式设置 GLM_MODEL=glm-4-flash-250414
 
 # 3. 启动开发服务器
 npm run dev
@@ -50,7 +52,7 @@ npm run dev
 
 - Next.js 16 (App Router) + React 19 + TypeScript
 - Tailwind CSS 4
-- 智谱 GLM-4.6（OpenAI 兼容端点）
+- 智谱 BigModel Chat Completions API（默认模型 `glm-4-flash-250414`）
 
 ## 项目结构
 
