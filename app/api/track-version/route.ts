@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
   }
 
   const playbook = TRACK_PLAYBOOKS[body.trackKey];
+  const originalFacts = extractResumeFacts(body.resumeText);
 
   const systemPrompt =
     "你是一名专门服务中国财经类高校本科毕业生的求职策略顾问。" +
@@ -75,8 +76,16 @@ export async function POST(req: NextRequest) {
     `建议强调关键词：${playbook.emphasisKeywords.join("、")}\n` +
     `改写规则：${playbook.rewriteRules.join("；")}\n` +
     `需要避免的弱表达：${playbook.avoidPhrases.join("、")}\n` +
+    `\n原始事实清单（sourceFact 只能从这里原样复制，不能改写）：\n${originalFacts
+      .map((fact, index) => `${index + 1}. ${fact}`)
+      .join("\n")}\n` +
     `\n简历原文：\n${body.resumeText}\n` +
     (body.jd ? `\n目标 JD：\n${body.jd}\n` : "\n目标 JD：未提供，请仅根据赛道要求进行判断。\n") +
+    `\n额外要求：\n` +
+    `1. rewritePack.bullets 必须是对象数组，每个对象都包含 sourceFact、rewritten、purpose。\n` +
+    `2. sourceFact 必须直接复制自上面的原始事实清单，不能重新组织语言。\n` +
+    `3. rewritten 必须比 sourceFact 更像 ${playbook.label} 的简历句子，不能与 sourceFact 完全相同。\n` +
+    `4. 如果原始事实偏弱，也要保留事实边界，只能加强岗位化表达，不能新增没有出现过的经历。\n` +
     `\n请输出 JSON，字段必须包含：` +
     `positioning, recruiterLens, keywordsToEmphasize, evidenceMap, rewritePack, gapRisks, nextActions。`;
 
@@ -88,9 +97,17 @@ export async function POST(req: NextRequest) {
       ],
       (raw) => {
         try {
-          return trackVersionResponseSchema.parse(
-            normalizeTrackVersionResponse(parseJsonResponse(raw))
+          const normalized = normalizeTrackVersionResponse(
+            parseJsonResponse(raw),
+            originalFacts
           );
+          const parsed = trackVersionResponseSchema.parse(normalized);
+
+          if (!hasMeaningfulTrackRewrite(parsed)) {
+            throw new Error("LLM 结构化输出校验失败");
+          }
+
+          return parsed;
         } catch {
           throw new Error("LLM 结构化输出校验失败");
         }
@@ -113,7 +130,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-function normalizeTrackVersionResponse(raw: unknown) {
+function normalizeTrackVersionResponse(raw: unknown, originalFacts: string[]) {
   const source = isRecord(raw) ? raw : {};
   const rewritePackSource = isRecord(source.rewritePack)
     ? source.rewritePack
@@ -133,7 +150,8 @@ function normalizeTrackVersionResponse(raw: unknown) {
     rewritePack: {
       summary: pickFirstString(rewritePackSource, ["summary", "positionSummary"]),
       bullets: normalizeRewriteBullets(
-        rewritePackSource.bullets ?? rewritePackSource.rewrites
+        rewritePackSource.bullets ?? rewritePackSource.rewrites,
+        originalFacts
       ),
     },
     gapRisks: normalizeStringArray(source.gapRisks ?? source.risks ?? source.gaps),
@@ -212,7 +230,7 @@ function normalizeEvidenceItems(value: unknown) {
     .filter((item): item is { sourceFact: string; whyItMatters: string } => Boolean(item));
 }
 
-function normalizeRewriteBullets(value: unknown) {
+function normalizeRewriteBullets(value: unknown, originalFacts: string[]) {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -220,9 +238,12 @@ function normalizeRewriteBullets(value: unknown) {
   return value
     .map((item) => {
       if (typeof item === "string") {
+        const rewritten = item.trim();
+        const sourceFact = findClosestOriginalFact(rewritten, originalFacts);
+
         return {
-          sourceFact: item.trim(),
-          rewritten: item.trim(),
+          sourceFact: sourceFact || rewritten,
+          rewritten,
           purpose: "把这条经历调整成更贴近目标赛道的表达。",
         };
       }
@@ -254,8 +275,13 @@ function normalizeRewriteBullets(value: unknown) {
         return null;
       }
 
+      const resolvedSourceFact =
+        sourceFact && !looksLikeRewriteInsteadOfFact(sourceFact, rewritten)
+          ? sourceFact
+          : findClosestOriginalFact(sourceFact || rewritten, originalFacts) || sourceFact || rewritten;
+
       return {
-        sourceFact: sourceFact || rewritten,
+        sourceFact: resolvedSourceFact,
         rewritten,
         purpose: purpose || "把这条经历调整成更贴近目标赛道的表达。",
       };
@@ -280,4 +306,88 @@ function pickFirstString(record: Record<string, unknown>, keys: string[]) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function extractResumeFacts(resumeText: string) {
+  const lines = resumeText
+    .split(/\n+/)
+    .flatMap((line) => line.split(/[。；;]/))
+    .map((item) => item.trim().replace(/^[-•\d.、\s]+/, ""))
+    .filter((item) => item.length >= 8);
+
+  return [...new Set(lines)].slice(0, 8);
+}
+
+function findClosestOriginalFact(candidate: string, originalFacts: string[]) {
+  if (!candidate.trim() || originalFacts.length === 0) {
+    return "";
+  }
+
+  let bestFact = "";
+  let bestScore = 0;
+
+  for (const fact of originalFacts) {
+    const score = similarityScore(candidate, fact);
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestFact = fact;
+    }
+  }
+
+  return bestScore >= 0.18 ? bestFact : originalFacts[0] ?? "";
+}
+
+function similarityScore(left: string, right: string) {
+  const leftTokens = createNgrams(normalizeForMatch(left));
+  const rightTokens = createNgrams(normalizeForMatch(right));
+
+  if (leftTokens.size === 0 || rightTokens.size === 0) {
+    return 0;
+  }
+
+  let intersection = 0;
+
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) {
+      intersection += 1;
+    }
+  }
+
+  return intersection / Math.max(leftTokens.size, rightTokens.size);
+}
+
+function createNgrams(text: string) {
+  const tokens = new Set<string>();
+
+  if (text.length <= 2) {
+    if (text) {
+      tokens.add(text);
+    }
+    return tokens;
+  }
+
+  for (let index = 0; index < text.length - 1; index += 1) {
+    tokens.add(text.slice(index, index + 2));
+  }
+
+  return tokens;
+}
+
+function normalizeForMatch(text: string) {
+  return text.replace(/[^\p{L}\p{N}]/gu, "").toLowerCase();
+}
+
+function looksLikeRewriteInsteadOfFact(sourceFact: string, rewritten: string) {
+  if (!sourceFact || !rewritten) {
+    return false;
+  }
+
+  return similarityScore(sourceFact, rewritten) > 0.92 && sourceFact.length >= rewritten.length - 6;
+}
+
+function hasMeaningfulTrackRewrite(result: z.infer<typeof trackVersionResponseSchema>) {
+  return result.rewritePack.bullets.some(
+    (bullet) => similarityScore(bullet.sourceFact, bullet.rewritten) < 0.82
+  );
 }
