@@ -1,6 +1,12 @@
 "use client";
 
-import { ChangeEvent, DragEvent, type ReactNode, useState } from "react";
+import {
+  ChangeEvent,
+  DragEvent,
+  type ReactNode,
+  useRef,
+  useState,
+} from "react";
 import {
   MAX_RESUME_FILE_SIZE,
   RESUME_FILE_ACCEPT,
@@ -109,7 +115,9 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(null);
+  const [resumeUpdateNotice, setResumeUpdateNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const resumeTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const resetResults = () => {
     setPolishResult(null);
@@ -121,6 +129,7 @@ export default function Home() {
     setResume("");
     setJd("");
     setUploadSummary(null);
+    setResumeUpdateNotice(null);
     setError(null);
     resetResults();
   };
@@ -134,6 +143,7 @@ export default function Home() {
     setUploading(true);
     setError(null);
     setUploadSummary(null);
+    setResumeUpdateNotice(null);
     resetResults();
 
     try {
@@ -210,6 +220,7 @@ export default function Home() {
 
     setLoading("polish");
     setError(null);
+    setResumeUpdateNotice(null);
     resetResults();
     setActiveResult("polish");
 
@@ -243,6 +254,7 @@ export default function Home() {
 
     setLoading("match");
     setError(null);
+    setResumeUpdateNotice(null);
     resetResults();
     setActiveResult("match");
 
@@ -265,6 +277,24 @@ export default function Home() {
     } finally {
       setLoading("");
     }
+  };
+
+  const applyPolishResult = () => {
+    if (!polishResult) {
+      return;
+    }
+
+    setResume(polishResult.rewritten);
+    setResumeUpdateNotice("已用建议稿替换上方简历内容");
+
+    requestAnimationFrame(() => {
+      resumeTextareaRef.current?.focus();
+      resumeTextareaRef.current?.setSelectionRange(0, 0);
+      resumeTextareaRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
   };
 
   return (
@@ -476,8 +506,12 @@ export default function Home() {
                     简历内容
                   </label>
                   <textarea
+                    ref={resumeTextareaRef}
                     value={resume}
-                    onChange={(e) => setResume(e.target.value)}
+                    onChange={(e) => {
+                      setResume(e.target.value);
+                      setResumeUpdateNotice(null);
+                    }}
                     rows={12}
                     placeholder="把你的简历全文粘贴到这里，或先上传已有文件。建议包含教育经历、实习、项目、校园经历与技能证书。"
                     className={TEXTAREA_CLASS}
@@ -486,6 +520,14 @@ export default function Home() {
                     <span>{resume.length} 字</span>
                     <span>上传后会自动回填到这里</span>
                   </div>
+                  {resumeUpdateNotice && (
+                    <div
+                      aria-live="polite"
+                      className="mt-3 rounded-[18px] border border-[#cfe0ef] bg-[#edf5fb] px-4 py-3 text-sm text-[#21415f]"
+                    >
+                      {resumeUpdateNotice}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -579,7 +621,7 @@ export default function Home() {
                         </div>
 
                         <button
-                          onClick={() => setResume(polishResult.rewritten)}
+                          onClick={applyPolishResult}
                           className="w-full rounded-full bg-[#17314a] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#21415f]"
                         >
                           用建议稿替换上方简历内容
