@@ -13,6 +13,7 @@ export interface ChatOptions {
   temperature?: number;
   responseFormat?: "json_object" | "text";
   maxTokens?: number;
+  timeoutMs?: number;
 }
 
 export interface StructuredChatOptions extends ChatOptions {
@@ -40,14 +41,30 @@ export async function chat(messages: ChatMessage[], options: ChatOptions = {}) {
     body.response_format = { type: "json_object" };
   }
 
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs ?? 30000;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let res: Response;
+
+  try {
+    res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`GLM API 超时 (${timeoutMs}ms)`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!res.ok) {
     const errText = await res.text();
@@ -256,6 +273,7 @@ function shouldRetryChatError(error: unknown) {
     rawMessage.includes("LLM 返回内容为空") ||
     rawMessage.includes("LLM 返回内容不是合法 JSON") ||
     rawMessage.includes("LLM 结构化输出校验失败") ||
+    rawMessage.includes("GLM API 超时") ||
     rawMessage.includes("ZodError")
   ) {
     return true;
