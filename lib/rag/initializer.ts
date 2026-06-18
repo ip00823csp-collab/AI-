@@ -1,5 +1,7 @@
 import { vectorStore, type Document } from "./vectorstore";
 import { ALL_AUDIT_CONTENT } from "@/data/audit-questions/四大面试题库";
+import { ADDITIONAL_QUESTIONS } from "@/data/audit-questions/补充题库";
+import { TECHNICAL_STACK_QUESTIONS } from "@/data/audit-questions/补充题库";
 
 let initialized = false;
 
@@ -19,6 +21,16 @@ export async function initializeVectorStore(): Promise<void> {
 
     console.log(`[VectorStore] Adding ${documents.length} documents to vector store`);
     await vectorStore.addDocuments(documents);
+
+    const additionalDocs = [...ADDITIONAL_QUESTIONS, ...TECHNICAL_STACK_QUESTIONS].map(
+      (content, index) => ({
+        id: `additional-${index}`,
+        ...content,
+      })
+    );
+
+    console.log(`[VectorStore] Adding additional ${additionalDocs.length} documents to vector store`);
+    await vectorStore.addDocuments(additionalDocs);
 
     initialized = true;
     console.log(`[VectorStore] Initialization complete. Total documents: ${vectorStore.getSize()}`);
